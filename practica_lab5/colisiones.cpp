@@ -86,3 +86,202 @@ bool Colisiones::exportarArchivosTexto(const QString &rutaDirectorio) const
     return true;
 }
 
+QRectF Colisiones::limites() const
+{
+    return m_limites;
+}
+
+QVector<Particula> Colisiones::particulas() const
+{
+    return m_particulas;
+}
+
+QVector<Obstaculo> Colisiones::obstaculos() const
+{
+    return m_obstaculos;
+}
+
+QMap<int, QVector<PuntoTrayectoria>> Colisiones::trayectorias() const
+{
+    return m_trayectorias;
+}
+
+QVector<EventoColision> Colisiones::eventosColision() const
+{
+    return m_eventosColision;
+}
+
+void Colisiones::avanzarPaso()
+{
+    m_tiempoActual += m_deltaTiempo;
+
+    for (Particula &particula : m_particulas) {
+        if (!particula.estaActiva()) {
+            continue;
+        }
+
+        particula.mover(m_deltaTiempo);
+        resolverColisionesPared(particula);
+        resolverColisionesObstaculo(particula);
+    }
+
+    resolverColisionesParticulas();
+    guardarPosicionesActuales();
+}
+
+void Colisiones::guardarPosicionesActuales()
+{
+    for (const Particula &particula : m_particulas) {
+        if (!particula.estaActiva()) {
+            continue;
+        }
+
+        m_trayectorias[particula.id()].append({m_tiempoActual,
+                                               particula.posicion(),
+                                               particula.velocidad(),
+                                               particula.masa(),
+                                               particula.radio()});
+    }
+}
+
+void Colisiones::resolverColisionesPared(Particula &particula)
+{
+    Vector2D posicion = particula.posicion();
+    Vector2D velocidad = particula.velocidad();
+    bool colisiono = false;
+
+    if (posicion.x - particula.radio() < m_limites.left()) {
+        posicion.x = m_limites.left() + particula.radio();
+        velocidad.x = std::abs(velocidad.x);
+        colisiono = true;
+    } else if (posicion.x + particula.radio() > m_limites.right()) {
+        posicion.x = m_limites.right() - particula.radio();
+        velocidad.x = -std::abs(velocidad.x);
+        colisiono = true;
+    }
+
+    if (posicion.y - particula.radio() < m_limites.top()) {
+        posicion.y = m_limites.top() + particula.radio();
+        velocidad.y = std::abs(velocidad.y);
+        colisiono = true;
+    } else if (posicion.y + particula.radio() > m_limites.bottom()) {
+        posicion.y = m_limites.bottom() - particula.radio();
+        velocidad.y = -std::abs(velocidad.y);
+        colisiono = true;
+    }
+
+    if (colisiono) {
+        particula.setPosicion(posicion);
+        particula.setVelocidad(velocidad);
+        registrarColision(QString("Particula %1 reboto elasticamente contra una pared").arg(particula.id()));
+    }
+}
+
+void Colisiones::resolverColisionesObstaculo(Particula &particula)
+{
+    for (const Obstaculo &obstaculo : m_obstaculos) {
+        Vector2D normal;
+        double penetracion = 0.0;
+
+        if (!circuloIntersecaRectangulo(particula, obstaculo.rectangulo(), &normal, &penetracion)) {
+            continue;
+        }
+
+        Vector2D velocidad = particula.velocidad();
+        const double velocidadNormal = velocidad.productoPunto(normal);
+
+        if (velocidadNormal < 0.0) {
+            velocidad = velocidad - normal * ((1.0 + obstaculo.restitucion()) * velocidadNormal);
+            particula.setVelocidad(velocidad);
+        }
+
+        particula.setPosicion(particula.posicion() + normal * penetracion);
+
+        registrarColision(QString("Particula %1 choco inelasticamente con obstaculo %2 (e=%3)")
+                              .arg(particula.id())
+                              .arg(obstaculo.id())
+                              .arg(obstaculo.restitucion(), 0, 'f', 2));
+    }
+}
+
+void Colisiones::resolverColisionesParticulas()
+{
+    for (int i = 0; i < m_particulas.size(); ++i) {
+        if (!m_particulas[i].estaActiva()) {
+            continue;
+        }
+
+        for (int j = i + 1; j < m_particulas.size(); ++j) {
+            if (!m_particulas[j].estaActiva()) {
+                continue;
+            }
+
+            const Vector2D diferencia = m_particulas[j].posicion() - m_particulas[i].posicion();
+            const double distanciaMinima = m_particulas[i].radio() + m_particulas[j].radio();
+
+            if (diferencia.longitudCuadrada() > distanciaMinima * distanciaMinima) {
+                continue;
+            }
+
+            const int idAbsorbido = m_particulas[j].id();
+            m_particulas[i].absorber(m_particulas[j]);
+            m_particulas[j].setActiva(false);
+
+            registrarColision(QString("Particulas %1 y %2 se fusionaron completamente inelasticamente")
+                                  .arg(m_particulas[i].id())
+                                  .arg(idAbsorbido));
+        }
+    }
+}
+
+bool Colisiones::circuloIntersecaRectangulo(const Particula &particula,
+                                            const QRectF &rectangulo,
+                                            Vector2D *normal,
+                                            double *penetracion) const
+{
+    const Vector2D centro = particula.posicion();
+    const double xMasCercano = std::clamp(centro.x, rectangulo.left(), rectangulo.right());
+    const double yMasCercano = std::clamp(centro.y, rectangulo.top(), rectangulo.bottom());
+
+    Vector2D desdeCercano(centro.x - xMasCercano, centro.y - yMasCercano);
+    const double distancia = desdeCercano.longitud();
+
+    if (distancia > particula.radio()) {
+        return false;
+    }
+
+    if (qFuzzyIsNull(distancia)) {
+        const double profundidadIzquierda = std::abs(centro.x - rectangulo.left());
+        const double profundidadDerecha = std::abs(rectangulo.right() - centro.x);
+        const double profundidadSuperior = std::abs(centro.y - rectangulo.top());
+        const double profundidadInferior = std::abs(rectangulo.bottom() - centro.y);
+
+        const double minProfundidad = std::min(std::min(profundidadIzquierda, profundidadDerecha),
+                                               std::min(profundidadSuperior, profundidadInferior));
+
+        if (minProfundidad == profundidadIzquierda) {
+            *normal = Vector2D(-1.0, 0.0);
+            *penetracion = particula.radio() + profundidadIzquierda;
+        } else if (minProfundidad == profundidadDerecha) {
+            *normal = Vector2D(1.0, 0.0);
+            *penetracion = particula.radio() + profundidadDerecha;
+        } else if (minProfundidad == profundidadSuperior) {
+            *normal = Vector2D(0.0, -1.0);
+            *penetracion = particula.radio() + profundidadSuperior;
+        } else {
+            *normal = Vector2D(0.0, 1.0);
+            *penetracion = particula.radio() + profundidadInferior;
+        }
+
+        return true;
+    }
+
+    *normal = desdeCercano / distancia;
+    *penetracion = particula.radio() - distancia;
+    return true;
+}
+
+void Colisiones::registrarColision(const QString &descripcion)
+{
+    m_eventosColision.append({m_tiempoActual, descripcion});
+}
