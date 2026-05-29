@@ -53,7 +53,7 @@ private:
     QVector<Obstaculo> m_obstaculos;
     QMap<int, QVector<PuntoTrayectoria>> m_trayectorias;
     QVector<EventoColision> m_eventosColision;
-    double m_deltaTiempo; // o m_pasoTiempo
+    double m_deltaTiempo;
     double m_tiempoTotal;
     double m_tiempoActual;
 };
