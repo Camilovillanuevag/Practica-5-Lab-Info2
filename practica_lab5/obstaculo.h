@@ -15,7 +15,7 @@ public:
 private:
     int m_id;
     QRectF m_rectangulo;
-    double m_restitution;
+    double m_restitucion;
 };
 
 #endif
