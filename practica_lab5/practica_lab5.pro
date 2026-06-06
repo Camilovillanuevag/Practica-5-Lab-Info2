@@ -8,6 +8,7 @@ CONFIG += c++17 cmdline
 
 SOURCES += \
         colisiones.cpp \
+        juegoestrategico.cpp \
         jugador.cpp \
         main.cpp \
         obstaculo.cpp \
@@ -20,6 +21,7 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 HEADERS += \
     colisiones.h \
+    juegoestrategico.h \
     jugador.h \
     obstaculo.h \
     particula.h
