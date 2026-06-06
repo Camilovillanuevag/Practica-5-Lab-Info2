@@ -1,4 +1,4 @@
-QT = core
+QT = core gui widgets
 
 CONFIG += c++17 cmdline
 
@@ -8,6 +8,7 @@ CONFIG += c++17 cmdline
 
 SOURCES += \
         colisiones.cpp \
+        jugador.cpp \
         main.cpp \
         obstaculo.cpp \
         particula.cpp
@@ -19,5 +20,6 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 HEADERS += \
     colisiones.h \
+    jugador.h \
     obstaculo.h \
     particula.h
